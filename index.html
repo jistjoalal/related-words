@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Related Word Visualizer</title>
+    <style>
+        #codesTable {
+            display: none;
+        }
+        .toggle-button {
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Related Word Visualizer</h1>
+    </header>
+    <main>
+        <button class="toggle-button" onclick="toggleTable()">Show Codes</button>
+        <table id="codesTable">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Description</th>
+                    <th>Example</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>ml</td><td>Means like (words with a similar meaning)</td><td>duck → bird</td></tr>
+                <tr><td>jja</td><td>Popular nouns modified by the given adjective, per Google Books Ngrams</td><td>gradual → increase</td></tr>
+                <tr><td>jjb</td><td>Popular adjectives used to modify the given noun, per Google Books Ngrams</td><td>beach → sandy</td></tr>
+                <tr><td>syn</td><td>Synonyms (words contained within the same WordNet synset)</td><td>ocean → sea</td></tr>
+                <tr><td>trg</td><td>"Triggers" (words that are statistically associated with the query word in the same piece of text.)</td><td>cow → milking</td></tr>
+                <tr><td>ant</td><td>Antonyms (per WordNet)</td><td>late → early</td></tr>
+                <tr><td>spc</td><td>"Kind of" (direct hypernyms, per WordNet)</td><td>gondola → boat</td></tr>
+                <tr><td>gen</td><td>"More general than" (direct hyponyms, per WordNet)</td><td>boat → gondola</td></tr>
+                <tr><td>com</td><td>"Comprises" (direct holonyms, per WordNet)</td><td>car → accelerator</td></tr>
+                <tr><td>par</td><td>"Part of" (direct meronyms, per WordNet)</td><td>trunk → tree</td></tr>
+                <tr><td>bga</td><td>Frequent followers (w′ such that P(w′|w) ≥ 0.001, per Google Books Ngrams)</td><td>wreak → havoc</td></tr>
+                <tr><td>bgb</td><td>Frequent predecessors (w′ such that P(w|w′) ≥ 0.001, per Google Books Ngrams)</td><td>havoc → wreak</td></tr>
+                <tr><td>hom</td><td>Homophones (sound-alike words)</td><td>course → coarse</td></tr>
+                <tr><td>cns</td><td>Consonant match</td><td>sample → simple</td></tr>
+            </tbody>
+        </table>
+        <form class="controls">
+            <label for="originWord">Origin Word:</label>
+            <input id="originWord" type="text" placeholder="Origin Word" value="word" />
+
+            <label for="breadth">Breadth:</label>
+            <input id="breadth" type="number" min="1" max="10" placeholder="Breadth" value="5" />
+
+            <label for="depth">Depth:</label>
+            <input id="depth" type="number" min="0" max="10" placeholder="Depth" value="3" />
+
+            <label for="maxFontSize">Max Font Size:</label>
+            <input id="maxFontSize" type="number" min="10" max="100" placeholder="Max Font Size" value="30" />
+
+            <label for="heuristic">Heuristic:</label>
+            <select id="heuristic">
+                <option value="ml">ml</option>
+                <option value="jja">jja</option>
+                <option value="jjb">jjb</option>
+                <option value="syn">syn</option>
+                <option value="trg">trg</option>
+                <option value="ant">ant</option>
+                <option value="spc">spc</option>
+                <option value="gen">gen</option>
+                <option value="com">com</option>
+                <option value="par">par</option>
+                <option value="bga">bga</option>
+                <option value="bgb">bgb</option>
+                <option value="hom">hom</option>
+                <option value="cns">cns</option>
+            </select>
+
+            <label for="consolidateDuplicates">Consolidate Duplicates:</label>
+            <input id="consolidateDuplicates" type="checkbox" checked />
+        </form>
+        <canvas id="visualizationCanvas" width="800" height="800" style="border:1px solid #ccc;"></canvas>
+    </main>
+    <footer>
+        <p>&copy; 2024 Related Word Visualizer</p>
+    </footer>
+    <script>
+        function toggleTable() {
+            const table = document.getElementById('codesTable');
+            table.style.display = table.style.display === 'none' ? 'table' : 'none';
+        }
+      
+        let debounceTimer;
+        let drawnNodes = new Map(); // Global map to track drawn nodes
+
+        function debounce(func, delay) {
+            return (...args) => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => func(...args), delay);
+            };
+        }
+
+        async function fetchRelatedWords(word, breadth, heuristic) {
+            const url = heuristic === 'ml'
+                ? `https://api.datamuse.com/words?ml=${word}&max=${breadth}&v=enwiki`
+                : `https://api.datamuse.com/words?rel_${heuristic}=${word}&max=${breadth}`;
+
+            const response = await fetch(url);
+            const data = await response.json();
+            return data.map(item => item.word);
+        }
+
+        async function createWordBranch(rootWord, breadth, heuristic) {
+            const relatedWords = await fetchRelatedWords(rootWord, breadth, heuristic);
+            const tree = {
+                value: rootWord,
+                children: relatedWords.map(word => ({ value: word, children: [] }))
+            };
+            return tree;
+        }
+
+        async function createWordTree(rootWord, breadth, depth, heuristic) {
+            if (depth === 0) {
+                return { value: rootWord, children: [] };
+            }
+            const branch = await createWordBranch(rootWord, breadth, heuristic);
+            for (const child of branch.children) {
+                child.children = (await createWordTree(child.value, breadth - 1, depth - 1, heuristic)).children;
+            }
+            return branch;
+        }
+
+     async function visualizeWords() {
+        const controls = document.querySelectorAll('.controls input, .controls select');
+        controls.forEach(input => input.disabled = true); // Disable inputs while loading
+
+        const canvas = document.getElementById('visualizationCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas immediately
+
+        const wordInput = document.getElementById('originWord').value;
+        const breadthInput = parseInt(document.getElementById('breadth').value, 10);
+        const depthInput = parseInt(document.getElementById('depth').value, 10);
+        const maxFontSizeInput = parseInt(document.getElementById('maxFontSize').value, 10);
+        const heuristicInput = document.getElementById('heuristic').value;
+        const consolidate = document.getElementById('consolidateDuplicates').checked;
+
+        if (wordInput && breadthInput >= 1 && depthInput >= 0) {
+            const wordTree = await createWordTree(wordInput, breadthInput, depthInput, heuristicInput);
+            drawTree(wordTree, breadthInput, depthInput, maxFontSizeInput, consolidate);
+        } else {
+            alert("Please enter valid inputs for origin word, breadth, depth, heuristic, and font size.");
+        }
+
+        controls.forEach(input => input.disabled = false); // Re-enable inputs after loading
+    }
+
+
+        function drawTree(tree, breadth, depth, maxFontSize, consolidate) {
+            const canvas = document.getElementById('visualizationCanvas');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radiusPadding = 20;
+
+            // Clear previous drawn nodes
+            drawnNodes.clear();
+
+            // Queue for BFS traversal
+            const queue = [{ node: tree, depth: 0, index: 0, x: centerX, y: centerY }];
+
+            while (queue.length > 0) {
+                const { node, depth: currentDepth, index, x: parentX, y: parentY } = queue.shift();
+
+                let x, y;
+
+                // Check if the word has already been drawn
+                if (consolidate && drawnNodes.has(node.value)) {
+                    const existingNode = drawnNodes.get(node.value);
+                    x = existingNode.x;
+                    y = existingNode.y;
+
+                    // Draw a line to the existing node
+                    ctx.beginPath();
+                    ctx.moveTo(parentX, parentY);
+                    ctx.lineTo(x, y);
+                    ctx.strokeStyle = '#888';
+                    ctx.stroke();
+                    continue;
+                }
+
+                // Calculate position based on depth and index
+                const radius = (currentDepth / depth) * (canvas.width / 2 - radiusPadding);
+                const angle = 2 * Math.PI * index / Math.pow(breadth, currentDepth);
+
+                x = centerX + radius * Math.cos(angle);
+                y = centerY + radius * Math.sin(angle);
+
+                // Store the node's position
+                drawnNodes.set(node.value, { x, y });
+
+                // Calculate font size proportional to depth
+                const fontSize = currentDepth === 0
+                    ? maxFontSize
+                    : ((depth - currentDepth) / depth) * maxFontSize;
+                ctx.font = `${Math.max(fontSize, 10)}px Arial`;
+
+                // Draw a line from parent to current node
+                if (currentDepth > 0) {
+                    ctx.beginPath();
+                    ctx.moveTo(parentX, parentY);
+                    ctx.lineTo(x, y);
+                    ctx.strokeStyle = '#888';
+                    ctx.stroke();
+                }
+
+                // Draw the word
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(node.value, x, y);
+
+                // Enqueue children with updated depth and index
+                node.children.forEach((child, childIndex) => {
+                    queue.push({
+                        node: child,
+                        depth: currentDepth + 1,
+                        index: index * breadth + childIndex,
+                        x,
+                        y
+                    });
+                });
+            }
+        }
+
+        function setupCanvasClick() {
+            const canvas = document.getElementById('visualizationCanvas');
+
+            canvas.addEventListener('click', async event => {
+                const rect = canvas.getBoundingClientRect();
+                const clickX = event.clientX - rect.left;
+                const clickY = event.clientY - rect.top;
+
+                // Check if the click is near any word
+                for (const [word, position] of drawnNodes.entries()) {
+                    const distance = Math.sqrt(
+                        Math.pow(clickX - position.x, 2) + Math.pow(clickY - position.y, 2)
+                    );
+                    if (distance < 20) { // Threshold for clicking a word
+                        document.getElementById('originWord').value = word;
+                        await visualizeWords();
+                        break;
+                    }
+                }
+            });
+        }
+
+        // Add event listeners to inputs for real-time visualization
+        document.querySelectorAll('.controls input, .controls select').forEach(input => {
+            input.addEventListener('input', debounce(visualizeWords, 500));
+        });
+
+        // Set up the canvas click listener once
+        setupCanvasClick();
+
+        // Perform initial render with default values
+        visualizeWords();
+    </script>
+</body>
+</html>

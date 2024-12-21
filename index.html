@@ -29,10 +29,13 @@
 <body>
     <header>
         <h1>Related Word Visualizer</h1>
-        <p>Using <a href="https://www.datamuse.com/api/">Datamuse API</a></p>
+        <ul>
+            <li><a href="https://www.datamuse.com/api/">Datamuse API</a>.</li>
+            <li>Click a word to explore.</li>
+        </ul>
     </header>
     <main>
-        <button class="toggle-button" onclick="toggleTable()">Explain Heuristics</button>
+        <button class="toggle-button" onclick="toggleTable()">Explain Datamuse Heuristics</button>
         <table id="codesTable">
             <thead>
                 <tr>
@@ -67,6 +70,7 @@
             <div>
                 <label for="breadth">Breadth:</label>
                 <input id="breadth" type="number" min="1" max="10" placeholder="Breadth" value="5" />
+                <span>(-1 at each depth)</span>
             </div>
 
             <div>

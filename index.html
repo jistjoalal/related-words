@@ -130,15 +130,19 @@
                 debounceTimer = setTimeout(() => func(...args), delay);
             };
         }
-
+        
+        let memo = {};
         async function fetchRelatedWords(word, breadth, heuristic) {
+            let key = `${word},${breadth},${heuristic}`;
+            if (memo[key]) return memo[key];
             const url = heuristic === 'ml'
-                ? `https://api.datamuse.com/words?ml=${word}&max=${breadth}&v=enwiki`
+                ? `https://api.datamuse.com/words?ml=${word}&max=${breadth}`
                 : `https://api.datamuse.com/words?rel_${heuristic}=${word}&max=${breadth}`;
 
             const response = await fetch(url);
             const data = await response.json();
-            return data.map(item => item.word);
+            memo[key] = data.map(item => item.word);
+            return memo[key];
         }
 
         async function createWordBranch(rootWord, breadth, heuristic) {
@@ -161,39 +165,40 @@
             return branch;
         }
 
-     async function visualizeWords() {
-        const controls = document.querySelectorAll('.controls input, .controls select');
-        controls.forEach(input => input.disabled = true); // Disable inputs while loading
+        async function visualizeWords() {
+            const controls = document.querySelectorAll('.controls input, .controls select');
+            controls.forEach(input => input.disabled = true); // Disable inputs while loading
 
-        const canvas = document.getElementById('visualizationCanvas');
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas immediately
+            const canvas = document.getElementById('visualizationCanvas');
+            const ctx = canvas.getContext('2d');
 
-        const wordInput = document.getElementById('originWord').value;
-        const breadthInput = parseInt(document.getElementById('breadth').value, 10);
-        const depthInput = parseInt(document.getElementById('depth').value, 10);
-        const maxFontSizeInput = parseInt(document.getElementById('maxFontSize').value, 10);
-        const heuristicInput = document.getElementById('heuristic').value;
-        const consolidate = document.getElementById('consolidateDuplicates').checked;
-        const canvasSize = document.getElementById('canvasSize').value;
-        canvas.width = canvasSize;
-        canvas.height = canvasSize;
+            const wordInput = document.getElementById('originWord').value;
+            const breadthInput = parseInt(document.getElementById('breadth').value, 10);
+            const depthInput = parseInt(document.getElementById('depth').value, 10);
+            const maxFontSizeInput = parseInt(document.getElementById('maxFontSize').value, 10);
+            const heuristicInput = document.getElementById('heuristic').value;
+            const consolidate = document.getElementById('consolidateDuplicates').checked;
+            const canvasSize = document.getElementById('canvasSize').value;
+            canvas.width = canvasSize;
+            canvas.height = canvasSize;
+            ctx.fillStyle = '#ddd';
+            ctx.fillRect(0,0,canvas.width,canvas.height);
 
-        if (wordInput && breadthInput >= 1 && depthInput >= 0) {
-            const wordTree = await createWordTree(wordInput, breadthInput, depthInput, heuristicInput);
-            drawTree(wordTree, breadthInput, depthInput, maxFontSizeInput, consolidate);
-        } else {
-            alert("Please enter valid inputs for origin word, breadth, depth, heuristic, and font size.");
+            if (wordInput && breadthInput >= 1 && depthInput >= 0) {
+                const wordTree = await createWordTree(wordInput, breadthInput, depthInput, heuristicInput);
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0,0,canvas.width,canvas.height);
+                ctx.fillStyle = 'black';
+                drawTree(wordTree, breadthInput, depthInput, maxFontSizeInput, consolidate);
+            }
+
+            controls.forEach(input => input.disabled = false); // Re-enable inputs after loading
         }
-
-        controls.forEach(input => input.disabled = false); // Re-enable inputs after loading
-    }
 
 
         function drawTree(tree, breadth, depth, maxFontSize, consolidate) {
             const canvas = document.getElementById('visualizationCanvas');
             const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;

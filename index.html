@@ -69,8 +69,8 @@
 
             <div>
                 <label for="breadth">Breadth:</label>
-                <input id="breadth" type="number" min="1" max="10" placeholder="Breadth" value="5" />
-                <span>(-1 at each depth)</span>
+                <input id="breadth" type="number" min="1" max="20" placeholder="Breadth" value="6" />
+                <span>(/2 at each depth)</span>
             </div>
 
             <div>
@@ -133,16 +133,16 @@
         
         let memo = {};
         async function fetchRelatedWords(word, breadth, heuristic) {
-            let key = `${word},${breadth},${heuristic}`;
-            if (memo[key]) return memo[key];
+            let key = `${word},${heuristic}`;
+            if (memo[key]) return memo[key].slice(0,breadth);
             const url = heuristic === 'ml'
-                ? `https://api.datamuse.com/words?ml=${word}&max=${breadth}`
-                : `https://api.datamuse.com/words?rel_${heuristic}=${word}&max=${breadth}`;
+                ? `https://api.datamuse.com/words?ml=${word}&max=30`
+                : `https://api.datamuse.com/words?rel_${heuristic}=${word}&max=30`;
 
             const response = await fetch(url);
             const data = await response.json();
             memo[key] = data.map(item => item.word);
-            return memo[key];
+            return memo[key].slice(0,breadth);
         }
 
         async function createWordBranch(rootWord, breadth, heuristic) {
@@ -160,7 +160,7 @@
             }
             const branch = await createWordBranch(rootWord, breadth, heuristic);
             for (const child of branch.children) {
-                child.children = (await createWordTree(child.value, breadth - 1, depth - 1, heuristic)).children;
+                child.children = (await createWordTree(child.value, ~~(breadth /2), depth - 1, heuristic)).children;
             }
             return branch;
         }
